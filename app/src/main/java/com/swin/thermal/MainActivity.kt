@@ -6,7 +6,7 @@ import android.app.Service
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
-import android.app.ServiceInfo
+import android.content.pm.ServiceInfo
 import android.content.Intent
 import android.graphics.Color
 import android.graphics.PixelFormat
