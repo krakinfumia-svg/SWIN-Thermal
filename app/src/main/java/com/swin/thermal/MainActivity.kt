@@ -1,21 +1,23 @@
+
 package com.swin.thermal
 
 import android.app.Activity
+import android.app.Service
 import android.os.Bundle
-import android.graphics.Canvas
+import android.content.Intent
 import android.graphics.Color
-import android.graphics.Paint
-import android.graphics.RadialGradient
-import android.graphics.Shader
-import android.view.View
-import android.widget.LinearLayout
-import android.widget.Switch
-import android.widget.TextView
+import android.graphics.PixelFormat
+import android.provider.Settings
+import android.net.Uri
 import android.view.Gravity
+import android.view.WindowManager
+import android.view.View
+import android.view.WindowManager.LayoutParams
+import android.widget.Button
+import android.widget.LinearLayout
+import android.widget.TextView
 
 class MainActivity : Activity() {
-
-    private lateinit var preview: ThermalPreview
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -23,7 +25,7 @@ class MainActivity : Activity() {
         val layout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
-            setPadding(24, 24, 24, 24)
+            setPadding(30, 30, 30, 30)
             setBackgroundColor(Color.rgb(15, 18, 28))
         }
 
@@ -31,84 +33,130 @@ class MainActivity : Activity() {
             text = "SWIN THERMAL"
             textSize = 28f
             setTextColor(Color.WHITE)
-            gravity = Gravity.CENTER
         }
 
-        val toggle = Switch(this).apply {
-            text = "Тепловизионный эффект"
-            setTextColor(Color.WHITE)
-            isChecked = true
+        val start = Button(this).apply {
+            text = "Запустить фильтр"
+            setOnClickListener {
+                if (Settings.canDrawOverlays(this@MainActivity)) {
+                    startService(
+                        Intent(this@MainActivity, ThermalOverlayService::class.java)
+                    )
+                } else {
+                    val intent = Intent(
+                        Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                        Uri.parse("package:$packageName")
+                    )
+                    startActivity(intent)
+                }
+            }
         }
 
-        preview = ThermalPreview(this)
-
-        toggle.setOnCheckedChangeListener { _, checked ->
-            preview.thermalEnabled = checked
-            preview.invalidate()
+        val stop = Button(this).apply {
+            text = "Остановить фильтр"
+            setOnClickListener {
+                stopService(
+                    Intent(this@MainActivity, ThermalOverlayService::class.java)
+                )
+            }
         }
 
         layout.addView(title)
-        layout.addView(toggle)
-        layout.addView(
-            preview,
-            LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                0,
-                1f
-            )
-        )
+        layout.addView(start)
+        layout.addView(stop)
 
         setContentView(layout)
     }
 }
 
-class ThermalPreview(context: android.content.Context) : View(context) {
+class ThermalOverlayService : Service() {
 
-    var thermalEnabled = true
-    private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private lateinit var windowManager: WindowManager
+    private var tintView: View? = null
+    private var bubble: TextView? = null
+    private var enabled = true
 
-    override fun onDraw(canvas: Canvas) {
-        super.onDraw(canvas)
+    override fun onBind(intent: Intent?) = null
 
-        canvas.drawColor(Color.BLACK)
+    override fun onCreate() {
+        super.onCreate()
 
-        val w = width.toFloat()
-        val h = height.toFloat()
+        windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
 
-        if (thermalEnabled) {
-            drawHeat(canvas, w * 0.5f, h * 0.35f, w * 0.35f)
-            drawHeat(canvas, w * 0.3f, h * 0.7f, w * 0.25f)
-            drawHeat(canvas, w * 0.75f, h * 0.75f, w * 0.2f)
-        } else {
-            paint.shader = null
-            paint.color = Color.DKGRAY
-            canvas.drawRect(0f, 0f, w, h, paint)
-        }
+        createTint()
+        createBubble()
     }
 
-    private fun drawHeat(
-        canvas: Canvas,
-        x: Float,
-        y: Float,
-        radius: Float
-    ) {
-        val colors = intArrayOf(
-            Color.WHITE,
-            Color.YELLOW,
-            Color.RED,
-            Color.BLUE,
-            Color.TRANSPARENT
+    private fun createTint() {
+        val view = View(this).apply {
+            setBackgroundColor(Color.argb(35, 100, 90, 180))
+        }
+
+        val params = LayoutParams(
+            LayoutParams.MATCH_PARENT,
+            LayoutParams.MATCH_PARENT,
+            LayoutParams.TYPE_APPLICATION_OVERLAY,
+            LayoutParams.FLAG_NOT_TOUCHABLE or
+                LayoutParams.FLAG_NOT_FOCUSABLE or
+                LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+            PixelFormat.TRANSLUCENT
         )
 
-        val positions = floatArrayOf(0f, 0.25f, 0.5f, 0.75f, 1f)
+        windowManager.addView(view, params)
+        tintView = view
+    }
 
-        paint.shader = RadialGradient(
-            x, y, radius,
-            colors, positions,
-            Shader.TileMode.CLAMP
+    private fun createBubble() {
+        val button = TextView(this).apply {
+            text = "SWIN"
+            textSize = 16f
+            setTextColor(Color.WHITE)
+            setBackgroundColor(Color.rgb(55, 45, 100))
+            gravity = Gravity.CENTER
+            setPadding(25, 18, 25, 18)
+
+            setOnClickListener {
+                enabled = !enabled
+
+                if (enabled) {
+                    tintView?.visibility = View.VISIBLE
+                } else {
+                    tintView?.visibility = View.GONE
+                }
+
+                text = if (enabled) "SWIN ON" else "SWIN OFF"
+            }
+        }
+
+        val params = LayoutParams(
+            LayoutParams.WRAP_CONTENT,
+            LayoutParams.WRAP_CONTENT,
+            LayoutParams.TYPE_APPLICATION_OVERLAY,
+            LayoutParams.FLAG_NOT_FOCUSABLE or
+                LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+            PixelFormat.TRANSLUCENT
         )
 
-        canvas.drawCircle(x, y, radius, paint)
-        paint.shader = null
+        params.gravity = Gravity.TOP or Gravity.END
+        params.x = 20
+        params.y = 150
+
+        windowManager.addView(button, params)
+        bubble = button
+    }
+
+    override fun onDestroy() {
+        tintView?.let {
+            windowManager.removeView(it)
+        }
+
+        bubble?.let {
+            windowManager.removeView(it)
+        }
+
+        tintView = null
+        bubble = null
+
+        super.onDestroy()
     }
 }
