@@ -24,3 +24,6 @@ android {
         jvmTarget = "17"
     }
 }
+dependencies {
+    implementation("com.google.mlkit:segmentation-selfie:16.0.0-beta6")
+}
