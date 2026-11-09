@@ -153,7 +153,7 @@ class ThermalOverlayService : Service() {
 
     private fun createTint() {
         val view = View(this).apply {
-            setBackgroundColor(Color.argb(35, 100, 90, 180))
+            setBackgroundColor(Color.argb(35, 128, 128, 128))
         }
 
         val params = LayoutParams(
