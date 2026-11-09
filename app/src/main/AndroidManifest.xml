@@ -16,6 +16,9 @@
             </intent-filter>
 
         </activity>
+        <service
+            android:name=".ThermalOverlayService"
+            android:exported="false" />
     </application>
 
 </manifest>
