@@ -3,15 +3,21 @@ package com.swin.thermal
 
 import android.app.Activity
 import android.app.Service
-import android.os.Bundle
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.ServiceInfo
 import android.content.Intent
 import android.graphics.Color
 import android.graphics.PixelFormat
-import android.provider.Settings
 import android.net.Uri
+import android.os.Build
+import android.os.Bundle
+import android.os.IBinder
+import android.provider.Settings
 import android.view.Gravity
-import android.view.WindowManager
 import android.view.View
+import android.view.WindowManager
 import android.view.WindowManager.LayoutParams
 import android.widget.Button
 import android.widget.LinearLayout
@@ -39,15 +45,22 @@ class MainActivity : Activity() {
             text = "Запустить фильтр"
             setOnClickListener {
                 if (Settings.canDrawOverlays(this@MainActivity)) {
-                    startService(
-                        Intent(this@MainActivity, ThermalOverlayService::class.java)
+                    val serviceIntent = Intent(
+                        this@MainActivity,
+                        ThermalOverlayService::class.java
                     )
+
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        startForegroundService(serviceIntent)
+                    } else {
+                        startService(serviceIntent)
+                    }
                 } else {
-                    val intent = Intent(
+                    val permissionIntent = Intent(
                         Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
                         Uri.parse("package:$packageName")
                     )
-                    startActivity(intent)
+                    startActivity(permissionIntent)
                 }
             }
         }
@@ -76,15 +89,66 @@ class ThermalOverlayService : Service() {
     private var bubble: TextView? = null
     private var enabled = true
 
-    override fun onBind(intent: Intent?) = null
+    companion object {
+        private const val CHANNEL_ID = "swin_thermal"
+        private const val NOTIFICATION_ID = 1001
+    }
+
+    override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onCreate() {
         super.onCreate()
+
+        createNotification()
 
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
 
         createTint()
         createBubble()
+    }
+
+    private fun createNotification() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(
+                CHANNEL_ID,
+                "SWIN Thermal",
+                NotificationManager.IMPORTANCE_LOW
+            )
+
+            val manager = getSystemService(
+                NotificationManager::class.java
+            )
+            manager.createNotificationChannel(channel)
+        }
+
+        val notification = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            Notification.Builder(this, CHANNEL_ID)
+        } else {
+            Notification.Builder(this)
+        }
+            .setSmallIcon(android.R.drawable.ic_menu_view)
+            .setContentTitle("SWIN Thermal")
+            .setContentText("Экранный фильтр работает")
+            .setOngoing(true)
+            .build()
+
+        if (Build.VERSION.SDK_INT >= 34) {
+            startForeground(
+                NOTIFICATION_ID,
+                notification,
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+            )
+        } else {
+            startForeground(NOTIFICATION_ID, notification)
+        }
+    }
+
+    override fun onStartCommand(
+        intent: Intent?,
+        flags: Int,
+        startId: Int
+    ): Int {
+        return START_NOT_STICKY
     }
 
     private fun createTint() {
@@ -108,7 +172,7 @@ class ThermalOverlayService : Service() {
 
     private fun createBubble() {
         val button = TextView(this).apply {
-            text = "SWIN"
+            text = "SWIN ON"
             textSize = 16f
             setTextColor(Color.WHITE)
             setBackgroundColor(Color.rgb(55, 45, 100))
@@ -118,10 +182,10 @@ class ThermalOverlayService : Service() {
             setOnClickListener {
                 enabled = !enabled
 
-                if (enabled) {
-                    tintView?.visibility = View.VISIBLE
+                tintView?.visibility = if (enabled) {
+                    View.VISIBLE
                 } else {
-                    tintView?.visibility = View.GONE
+                    View.GONE
                 }
 
                 text = if (enabled) "SWIN ON" else "SWIN OFF"
@@ -147,11 +211,11 @@ class ThermalOverlayService : Service() {
 
     override fun onDestroy() {
         tintView?.let {
-            windowManager.removeView(it)
+            runCatching { windowManager.removeView(it) }
         }
 
         bubble?.let {
-            windowManager.removeView(it)
+            runCatching { windowManager.removeView(it) }
         }
 
         tintView = null
